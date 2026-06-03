@@ -641,6 +641,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 const DB='nimbus_v3',STORE='files';
 let db,files=[],layout='grid',currentView='all',selectedIds=new Set(),searchQuery='',currentFolder=null,folderPath=[],ctxTarget=null,shareTarget=null,renameTarget=null;
 
+// ── HTML ESCAPE ── (prevents XSS wherever user-controlled strings enter innerHTML)
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
 // ── DB ──
 function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=e=>e.target.result.createObjectStore(STORE,{keyPath:'id'});r.onsuccess=e=>{db=e.target.result;res()};r.onerror=rej})}
 function dbAll(){return new Promise((res,rej)=>{const r=db.transaction(STORE,'readonly').objectStore(STORE).getAll();r.onsuccess=e=>res(e.target.result);r.onerror=rej})}
@@ -712,15 +715,15 @@ function render(){
     c.innerHTML=`<div class="files-grid">${vf.map((f,i)=>`
       <div class="file-card${selectedIds.has(f.id)?' selected':''}" style="animation-delay:${i*30}ms" data-id="${f.id}" onclick="handleCardClick('${f.id}',event)" ondblclick="openItem('${f.id}')" oncontextmenu="showCtx(event,'${f.id}')">
         <div class="file-sel"><svg viewBox="0 0 10 8"><polyline points="1,4 4,7 9,1"/></svg></div>
-        ${f.mime&&f.mime.startsWith('image')&&f.dataUrl?`<img class="file-thumb" src="${f.dataUrl}" loading="lazy" alt="${f.name}">`:`<div class="file-icon-wrap">${emoji(f.mime,f.isFolder)}</div>`}
-        <div class="file-name" title="${f.name}">${f.name}</div>
+        ${f.mime&&f.mime.startsWith('image')&&f.dataUrl?`<img class="file-thumb" src="${f.dataUrl}" loading="lazy" alt="${esc(f.name)}">`:`<div class="file-icon-wrap">${emoji(f.mime,f.isFolder)}</div>`}
+        <div class="file-name" title="${esc(f.name)}">${esc(f.name)}</div>
         <div class="file-meta">${fmtSize(f.size||0)}</div>
       </div>`).join('')}</div>`;
   }else{
     c.innerHTML=`<div class="files-list">${vf.map((f,i)=>`
       <div class="file-row${selectedIds.has(f.id)?' selected':''}" style="animation-delay:${i*20}ms" data-id="${f.id}" onclick="handleCardClick('${f.id}',event)" ondblclick="openItem('${f.id}')" oncontextmenu="showCtx(event,'${f.id}')">
         <div class="fr-icon">${emoji(f.mime,f.isFolder)}</div>
-        <div class="fr-info"><div class="fr-name">${f.name}</div><div class="fr-meta">${fmtDate(f.added)}</div></div>
+        <div class="fr-info"><div class="fr-name">${esc(f.name)}</div><div class="fr-meta">${fmtDate(f.added)}</div></div>
         <div class="fr-size">${f.isFolder?'—':fmtSize(f.size||0)}</div>
         ${f.starred?`<div class="fr-star filled"><svg viewBox="0 0 14 14"><polygon points="7,1 9,5 13,5.5 10,8.5 10.5,12.5 7,10.5 3.5,12.5 4,8.5 1,5.5 5,5"/></svg></div>`:''}
       </div>`).join('')}</div>`;
@@ -761,8 +764,8 @@ function updateBreadcrumb(){
   const bc=document.getElementById('breadcrumb');
   const parts=[{id:null,name:'Home'},...folderPath];
   bc.innerHTML=parts.map((p,i)=>{
-    if(i===parts.length-1)return`<span class="breadcrumb-item current">${p.name}</span>`;
-    return`<span class="breadcrumb-item" onclick="navToFolder('${p.id}')">${p.name}</span><span class="breadcrumb-sep">/</span>`;
+    if(i===parts.length-1)return`<span class="breadcrumb-item current">${esc(p.name)}</span>`;
+    return`<span class="breadcrumb-item" onclick="navToFolder('${p.id}')">${esc(p.name)}</span><span class="breadcrumb-sep">/</span>`;
   }).join('');
 }
 function updateBulkActions(){
@@ -820,7 +823,7 @@ async function handleFiles(fileList){
   const addedIds=[];
   for(const file of fileList){
     const slug='u_'+Math.random().toString(36).slice(2);
-    prog.insertAdjacentHTML('beforeend',`<div class="up-item"><div class="up-name">${file.name}</div><div class="up-bar"><div class="up-fill" id="${slug}_bar"></div></div><div class="up-pct" id="${slug}_pct">0%</div></div>`);
+    prog.insertAdjacentHTML('beforeend',`<div class="up-item"><div class="up-name">${esc(file.name)}</div><div class="up-bar"><div class="up-fill" id="${slug}_bar"></div></div><div class="up-pct" id="${slug}_pct">0%</div></div>`);
     await new Promise(res=>{
       const reader=new FileReader();let pv=0;
       const iv=setInterval(()=>{pv=Math.min(pv+Math.random()*25,90);const b=document.getElementById(slug+'_bar'),p=document.getElementById(slug+'_pct');if(b)b.style.width=pv.toFixed(0)+'%';if(p)p.textContent=pv.toFixed(0)+'%';},60);
@@ -901,21 +904,28 @@ function shareSelected(){const id=[...selectedIds][0];if(!id)return;const f=file
 function previewFile(f){
   document.getElementById('preview-title').textContent=f.name;
   const body=document.getElementById('preview-body');
-  if(!f.dataUrl){body.innerHTML=`<div class="preview-icon">${emoji(f.mime)}</div><div class="preview-name">${f.name}</div><div class="preview-info">${fmtSize(f.size)}</div>`;openModal('preview-modal');return;}
+  if(!f.dataUrl){body.innerHTML=`<div class="preview-icon">${emoji(f.mime)}</div><div class="preview-name">${esc(f.name)}</div><div class="preview-info">${fmtSize(f.size)}</div>`;openModal('preview-modal');return;}
   let html='';
-  if(f.mime.startsWith('image'))html=`<img class="preview-img" src="${f.dataUrl}" alt="${f.name}">`;
+  if(f.mime.startsWith('image'))html=`<img class="preview-img" src="${f.dataUrl}" alt="${esc(f.name)}">`;
   else if(f.mime.startsWith('video'))html=`<video class="preview-video" src="${f.dataUrl}" controls></video>`;
   else if(f.mime.startsWith('audio'))html=`<div class="preview-icon">🎵</div><audio class="preview-audio" src="${f.dataUrl}" controls></audio>`;
   else if(f.mime.includes('pdf'))html=`<iframe class="preview-pdf" src="${f.dataUrl}"></iframe>`;
-  else if(f.mime.startsWith('text')){try{html=`<pre class="preview-text">${atob(f.dataUrl.split(',')[1]).replace(/</g,'&lt;').slice(0,8000)}</pre>`}catch(e){html=`<div class="preview-icon">${emoji(f.mime)}</div>`;}}
-  else html=`<div class="preview-icon">${emoji(f.mime)}</div><div class="preview-name">${f.name}</div><div class="preview-info">${fmtSize(f.size)}</div>`;
+  else if(f.mime.startsWith('text')){
+    try{
+      // Use TextDecoder so UTF-8 text files (non-ASCII) render correctly instead of mojibake
+      const bytes=Uint8Array.from(atob(f.dataUrl.split(',')[1]),c=>c.charCodeAt(0));
+      const text=new TextDecoder('utf-8').decode(bytes);
+      html=`<pre class="preview-text">${esc(text).slice(0,8000)}</pre>`;
+    }catch(e){html=`<div class="preview-icon">${emoji(f.mime)}</div>`;}
+  }
+  else html=`<div class="preview-icon">${emoji(f.mime)}</div><div class="preview-name">${esc(f.name)}</div><div class="preview-info">${fmtSize(f.size)}</div>`;
   html+=`<div class="preview-actions"><button class="btn btn-sm btn-icon-label" onclick="downloadFile('${f.id}')" title="Download"><svg viewBox="0 0 14 14" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8"><line x1="7" y1="2" x2="7" y2="9"/><polyline points="4,7 7,10 10,7"/><line x1="2" y1="12" x2="12" y2="12"/></svg><span class="btn-label">Download</span></button><button class="btn btn-sm btn-icon-label" onclick="openShareModal(files.find(x=>x.id==='${f.id}'))" title="Share"><svg viewBox="0 0 14 14" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8"><circle cx="11" cy="3" r="1.8" fill="none"/><circle cx="3" cy="7" r="1.8" fill="none"/><circle cx="11" cy="11" r="1.8" fill="none"/><line x1="4.8" y1="6.1" x2="9.2" y2="4.2"/><line x1="4.8" y1="7.9" x2="9.2" y2="9.8"/></svg><span class="btn-label">Share</span></button></div>`;
   body.innerHTML=html;openModal('preview-modal');
 }
 function downloadFile(id){const f=files.find(x=>x.id===id);if(!f||!f.dataUrl)return;const a=document.createElement('a');a.href=f.dataUrl;a.download=f.name;a.click();showToast('⬇ Downloading '+f.name);}
 
 // ── SHARE ──
-function openShareModal(f){if(!f)return;shareTarget=f;document.getElementById('share-info').innerHTML=`<strong>${f.name}</strong> &bull; ${fmtSize(f.size||0)}`;const link=f.dataUrl||'';document.getElementById('share-link').value=link.length>200?link.slice(0,200)+'…':link;openModal('share-modal');}
+function openShareModal(f){if(!f)return;shareTarget=f;document.getElementById('share-info').innerHTML=`<strong>${esc(f.name)}</strong> &bull; ${fmtSize(f.size||0)}`;const link=f.dataUrl||'';document.getElementById('share-link').value=link.length>200?link.slice(0,200)+'…':link;openModal('share-modal');}
 function copyShareLink(){if(!shareTarget?.dataUrl){showToast('No data');return;}navigator.clipboard.writeText(shareTarget.dataUrl).then(()=>showToast('🔗 Link copied!','t-info')).catch(()=>{document.getElementById('share-link').select();document.execCommand('copy');showToast('Copied!');});}
 function downloadShareFile(){if(!shareTarget)return;downloadFile(shareTarget.id);}
 function exportShareHtml(){
@@ -924,8 +934,8 @@ function exportShareHtml(){
   if(f.mime.startsWith('image'))content=`<img src="${f.dataUrl}" style="max-width:100%;border-radius:8px">`;
   else if(f.mime.startsWith('video'))content=`<video src="${f.dataUrl}" controls style="max-width:100%"></video>`;
   else if(f.mime.startsWith('audio'))content=`<audio src="${f.dataUrl}" controls></audio>`;
-  else content=`<p><a href="${f.dataUrl}" download="${f.name}" style="color:#1A65B8">${f.name}</a></p>`;
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${f.name}</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet"><style>body{font-family:Inter,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#f7f7f5;padding:20px}h2{font-size:16px;margin-bottom:16px;color:#111}</style></head><body><h2>${f.name}</h2>${content}</body></html>`;
+  else content=`<p><a href="${f.dataUrl}" download="${esc(f.name)}" style="color:#1A65B8">${esc(f.name)}</a></p>`;
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(f.name)}</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet"><style>body{font-family:Inter,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#f7f7f5;padding:20px}h2{font-size:16px;margin-bottom:16px;color:#111}</style></head><body><h2>${esc(f.name)}</h2>${content}</body></html>`;
   const blob=new Blob([html],{type:'text/html'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=f.name.replace(/\.[^.]+$/,'')+'-shared.html';a.click();showToast('📄 Exported as HTML');
 }
 
@@ -966,7 +976,14 @@ async function ctxDelete(){
   hideCtx();
   await removeWithAnimation(ctxTarget);
   const f=files.find(x=>x.id===ctxTarget);if(!f)return;
-  f.deleted=true;await dbPut(f);selectedIds.clear();render();showToast('🗑 Moved to trash','t-danger');
+  if(currentView==='trash'){
+    await dbDel(ctxTarget);files=files.filter(x=>x.id!==ctxTarget);
+    showToast('🗑 Permanently deleted','t-danger');
+  }else{
+    f.deleted=true;await dbPut(f);
+    showToast('🗑 Moved to trash','t-danger');
+  }
+  selectedIds.clear();render();
 }
 
 // ── MODAL ──
