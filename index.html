@@ -49,7 +49,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .logo-cloud img{width:28px;height:28px;object-fit:contain;display:block}
 .logo-wordmark{
   display:flex;align-items:baseline;gap:0;
-  font-size:22px;font-weight:600;letter-spacing:-.6px;
+  font-size:40px;font-weight:600;letter-spacing:-.6px;
   color:var(--text);line-height:1;
   transition:color .3s;
 }
@@ -1613,6 +1613,10 @@ svg.bg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
           <button class="btn btn-sm btn-icon-label" onclick="shareSelected()" title="Share"><svg viewBox="0 0 14 14"><circle cx="11" cy="3" r="1.8"></circle><circle cx="3" cy="7" r="1.8"></circle><circle cx="11" cy="11" r="1.8"></circle><line x1="4.8" y1="6.1" x2="9.2" y2="4.2"></line><line x1="4.8" y1="7.9" x2="9.2" y2="9.8"></line></svg><span class="btn-label">Share</span></button>
           <button class="btn btn-sm btn-danger btn-icon-label" onclick="deleteSelected()" title="Delete"><svg viewBox="0 0 14 14"><polyline points="2,3.5 12,3.5"></polyline><path d="M4 3.5V2.5h6v1"></path><rect x="3" y="4.5" width="8" height="8" rx="1"></rect><line x1="6" y1="7" x2="6" y2="11"></line><line x1="8" y1="7" x2="8" y2="11"></line></svg><span class="btn-label">Delete</span></button>
         </div>
+          <div id="trash-actions" style="display:none;gap:6px;align-items:center">
+            <button class="btn btn-sm btn-danger btn-icon-label" onclick="deleteSelected()" id="trash-delete-btn" title="Permanently delete selected"><svg viewBox="0 0 14 14"><polyline points="2,3.5 12,3.5"></polyline><path d="M4 3.5V2.5h6v1"></path><rect x="3" y="4.5" width="8" height="8" rx="1"></rect><line x1="6" y1="7" x2="6" y2="11"></line><line x1="8" y1="7" x2="8" y2="11"></line></svg><span class="btn-label">Delete</span></button>
+            <button class="btn btn-sm btn-danger btn-icon-label" onclick="purgeTrash()" title="Permanently delete all trash"><svg viewBox="0 0 14 14"><polyline points="2,3.5 12,3.5"></polyline><path d="M4 3.5V2.5h6v1"></path><rect x="3" y="4.5" width="8" height="8" rx="1"></rect><line x1="5" y1="6.5" x2="5" y2="11"></line><line x1="7" y1="6.5" x2="7" y2="11"></line><line x1="9" y1="6.5" x2="9" y2="11"></line></svg><span class="btn-label">Purge all</span></button>
+          </div>
         <div style="display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;transition:border-color .3s">
           <button id="grid-btn" onclick="setLayout('grid')" style="padding:5px 8px;border:none;background:var(--text);cursor:pointer;color:var(--bg);display:flex;align-items:center;transition:background .2s,color .2s">
             <svg viewBox="0 0 14 14" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8"><rect x="1" y="1" width="5" height="5" rx="1"></rect><rect x="8" y="1" width="5" height="5" rx="1"></rect><rect x="1" y="8" width="5" height="5" rx="1"></rect><rect x="8" y="8" width="5" height="5" rx="1"></rect></svg>
@@ -1887,8 +1891,14 @@ function updateBreadcrumb(){
 }
 function updateBulkActions(){
   const el=document.getElementById('bulk-actions');
+  const ta=document.getElementById('trash-actions');
+  const db=document.getElementById('trash-delete-btn');
+  const inTrash=currentView==='trash';
+  // In trash: show dedicated trash-actions bar; hide generic bulk-actions
+  if(ta){ta.style.display=inTrash?'flex':'none';}
+  if(db){db.disabled=selectedIds.size===0;db.style.opacity=selectedIds.size===0?'.45':'1';}
   if(!el)return;
-  const showing=selectedIds.size>0;
+  const showing=selectedIds.size>0&&!inTrash;
   if(showing&&el.style.display==='none'){
     el.style.display='flex';
     el.style.animation='fadeInUp .22s cubic-bezier(.34,1.4,.64,1)';
@@ -2003,6 +2013,18 @@ async function deleteSelected(){
   showToast(currentView==='trash'?`🗑 ${count} item${count>1?'s':''} permanently deleted`:`🗑 Moved to trash`,'t-danger');
   selectedIds.clear();render();
 }
+
+async function purgeTrash(){
+  const trashed=files.filter(x=>x.deleted);
+  if(!trashed.length){showToast('Trash is already empty');return;}
+  const count=trashed.length;
+  await Promise.all(trashed.map(f=>removeWithAnimation(f.id)));
+  for(const f of trashed){await dbDel(f.id);}
+  files=files.filter(x=>!x.deleted);
+  showToast(`🗑 ${count} item${count>1?'s':''} permanently deleted`,'t-danger');
+  selectedIds.clear();render();
+}
+
 
 // ── STAR with pop animation ──
 async function starSelected(){
