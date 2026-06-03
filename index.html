@@ -1059,7 +1059,7 @@ svg.bg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 </style>
 </head>
 <body>
-<div id="sso-gate" style="position:fixed;inset:0;z-index:9999;display:flex;background:#eaecf1"><script>(function(){try{var s=JSON.parse(sessionStorage.getItem('kn-sso-session'));if(s&&s.id&&s.name)document.currentScript.parentElement.style.display='none';}catch(e){}}())</script>
+<div id="sso-gate" style="position:fixed;inset:0;z-index:9999;display:flex;background:#eaecf1">
 <div class="wrap">
   <!-- LEFT BRANDING PANEL -->
   <div class="left" aria-hidden="true">
@@ -2633,9 +2633,7 @@ document.addEventListener('click', e => {
 
 // On boot: check for existing session
 (function ssoBootCheck(){
-  const s=ssoGetSession();
-  if(s){ssoOnLogin(s.id,s.name,s.role);}
-  else{document.getElementById('sso-gate').style.display='flex';}
+  document.getElementById('sso-gate').style.display='flex';
 })();
 
 </script>
