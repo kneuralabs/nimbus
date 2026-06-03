@@ -3095,10 +3095,11 @@ async function checkPW() {
   errEl.classList.remove('show');
   currentPw = pw;
   btn.disabled = false; btn.textContent = 'Sign in';
-   else {
-    document.getElementById('dash-name').textContent = 'Welcome, ' + user.name + '.';
-    document.getElementById('dash-id').textContent   = currentID;
-    showScreen('s-dash');
+  if (currentID === 'admin' || (_loadUsers()[currentID]?.role === 'admin')) {
+    refreshUserList();
+    showScreen('s-admin');
+  } else {
+    ssoOnLogin(currentID, _loadUsers()[currentID]?.name || currentID, 'employee');
     ssoToast('Signed in successfully ✓', 'ok');
   }
 }
@@ -3119,9 +3120,7 @@ async function changePassword() {
   users[currentID].password = await _sha256(newPw);
   _saveUsers(users);
   currentPw = newPw;
-  document.getElementById('dash-name').textContent = 'Welcome, ' + (user.name || currentID) + '.';
-  document.getElementById('dash-id').textContent   = currentID;
-  showScreen('s-dash');
+  ssoOnLogin(currentID, user.name || currentID, user.role || 'employee');
   ssoToast('Password updated ✓', 'ok');
 }
 
@@ -3140,7 +3139,7 @@ async function changeSelfPassword() {
   users[currentID].password = await _sha256(newPw);
   _saveUsers(users);
   currentPw = newPw;
-  showScreen('s-dash');
+  ssoOnLogin(currentID, users[currentID]?.name || currentID, 'employee');
   ssoToast('Password updated ✓', 'ok');
 }
 
