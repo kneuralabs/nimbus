@@ -2,7 +2,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nimbus — Cloud Storage</title>
-<script>(function(){var p=new URLSearchParams(location.search);if(p.has('kn-auth')){sessionStorage.setItem('kn-session','1');sessionStorage.setItem('kn-sso-session',JSON.stringify({id:'sso',name:'User'}));p.delete('kn-auth');var clean=location.pathname+(p.toString()?'?'+p.toString():'');history.replaceState(null,'',clean);}if(!sessionStorage.getItem('kn-session')){location.replace('https://sso.kneuralabs.com?redirect='+encodeURIComponent('https://nimbus.kneuralabs.com'));}})();</script>
+<script>(function(){var p=new URLSearchParams(location.search);if(p.has('kn-auth')){try{var u=JSON.parse(atob(p.get('kn-auth')));sessionStorage.setItem('kn-session','1');sessionStorage.setItem('kn-sso-session',JSON.stringify(u));}catch(e){}p.delete('kn-auth');history.replaceState(null,'',location.pathname+(p.toString()?'?'+p.toString():''));}if(!sessionStorage.getItem('kn-session')){location.replace('https://sso.kneuralabs.com?redirect='+encodeURIComponent('https://nimbus.kneuralabs.com'));}})();</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
 <style>
