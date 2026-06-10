@@ -2,7 +2,104 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nimbus — Cloud Storage</title>
-<script>(function(){var p=new URLSearchParams(location.search);if(p.has('kn-auth')){try{var u=JSON.parse(atob(p.get('kn-auth')));sessionStorage.setItem('kn-session','1');sessionStorage.setItem('kn-sso-session',JSON.stringify(u));}catch(e){}p.delete('kn-auth');history.replaceState(null,'',location.pathname+(p.toString()?'?'+p.toString():''));}if(!sessionStorage.getItem('kn-session')){location.replace('https://sso.kneuralabs.com?redirect='+encodeURIComponent('https://nimbus.kneuralabs.com'));}})();</script>
+<script>
+(function () {
+  var SSO_URL     = 'https://sso.kneuralabs.com?redirect=' + encodeURIComponent('https://nimbus.kneuralabs.com');
+  var SESSION_KEY = 'kn-sso-session';
+  var LEGACY_FLAG = 'kn-session';      // older cached builds gate on this flag
+  var RETURN_KEY  = 'kn-sso-return';   // deep link stashed across the SSO round-trip
+  var GUARD_KEY   = 'kn-sso-bounce';   // redirect-loop circuit breaker
+
+  function safe(fn, fallback) { try { return fn(); } catch (e) { return fallback; } }
+
+  function decodePayload(raw) {
+    // URLSearchParams form-decodes the value, so a literal '+' in unencoded
+    // base64 arrives here as a space. Repair that, accept base64url, and
+    // restore stripped '=' padding before atob.
+    var b64 = raw.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+    if (b64.length % 4) b64 += '===='.slice(b64.length % 4);
+    var bin = atob(b64); // throws on garbage — caller catches
+    // atob yields latin1 code points; decode as UTF-8 so non-ASCII names survive.
+    var json;
+    if (typeof TextDecoder === 'function') {
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      json = new TextDecoder('utf-8').decode(bytes);
+    } else {
+      json = decodeURIComponent(escape(bin));
+    }
+    return JSON.parse(json);
+  }
+
+  function validSession(s) {
+    return !!(s && typeof s === 'object' &&
+              typeof s.id === 'string' && s.id &&
+              typeof s.name === 'string' && s.name);
+  }
+
+  var params  = new URLSearchParams(location.search);
+  var hadAuth = params.has('kn-auth');
+  var authErr = null;
+
+  if (hadAuth) {
+    try {
+      var u = decodePayload(params.get('kn-auth'));
+      if (validSession(u)) {
+        window.__KN_SSO__ = u; // in-memory fallback when storage is blocked
+        safe(function () {
+          sessionStorage.setItem(SESSION_KEY, JSON.stringify(u));
+          sessionStorage.setItem(LEGACY_FLAG, '1');
+          sessionStorage.removeItem(GUARD_KEY);
+        });
+      } else {
+        authErr = 'payload missing id/name';
+      }
+    } catch (e) {
+      authErr = (e && e.message) || 'decode failed';
+    }
+    params.delete('kn-auth');
+    var back  = safe(function () {
+      var v = sessionStorage.getItem(RETURN_KEY);
+      sessionStorage.removeItem(RETURN_KEY);
+      return v;
+    });
+    var clean = back || (location.pathname + (params.toString() ? '?' + params.toString() : '') + location.hash);
+    history.replaceState(null, '', clean);
+  }
+
+  var session = safe(function () { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); });
+  if (validSession(session) || validSession(window.__KN_SSO__)) return; // signed in — let the app boot
+
+  if (hadAuth) {
+    // SSO just sent us something unusable. Bouncing straight back would loop
+    // forever — stay here and let the in-page sign-in gate render instead.
+    console.error('[nimbus] SSO handoff rejected: ' + authErr);
+    return;
+  }
+
+  var storageOk = safe(function () {
+    sessionStorage.setItem('kn-probe', '1');
+    sessionStorage.removeItem('kn-probe');
+    return true;
+  }, false);
+  if (!storageOk) {
+    // No way to persist a session across the round-trip; redirecting would loop.
+    console.error('[nimbus] sessionStorage unavailable — showing local sign-in.');
+    return;
+  }
+
+  // Circuit breaker: if repeated round-trips never produce a valid session
+  // (partitioned storage, SSO misconfiguration), stop bouncing.
+  var bounces = parseInt(safe(function () { return sessionStorage.getItem(GUARD_KEY); }) || '0', 10);
+  if (bounces >= 2) {
+    console.error('[nimbus] SSO redirect loop detected — showing local sign-in.');
+    return;
+  }
+  sessionStorage.setItem(GUARD_KEY, String(bounces + 1));
+  sessionStorage.setItem(RETURN_KEY, location.pathname + location.search + location.hash);
+  location.replace(SSO_URL);
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
 <style>
@@ -1060,7 +1157,7 @@ svg.bg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 </style>
 </head>
 <body>
-<div id="sso-gate" style="position:fixed;inset:0;z-index:9999;display:flex;background:#eaecf1"><script>(function(){try{var s=JSON.parse(sessionStorage.getItem('kn-sso-session'));if(s&&s.id&&s.name)document.currentScript.parentElement.style.display='none';}catch(e){}}())</script>
+<div id="sso-gate" style="position:fixed;inset:0;z-index:9999;display:flex;background:#eaecf1"><script>(function(){var s=null;try{s=JSON.parse(sessionStorage.getItem('kn-sso-session'));}catch(e){}if(!(s&&s.id&&s.name))s=window.__KN_SSO__;if(s&&s.id&&s.name)document.currentScript.parentElement.style.display='none';}())</script>
 <div class="wrap">
   <!-- LEFT BRANDING PANEL -->
   <div class="left" aria-hidden="true">
@@ -2431,11 +2528,11 @@ async function checkPW() {
   errEl.classList.remove('show');
   currentPw = pw;
   btn.disabled = false; btn.textContent = 'Sign in';
-  if (currentID === 'admin' || (_loadUsers()[currentID]?.role === 'admin')) {
+  if (currentID === 'admin' || user.role === 'admin') {
     refreshUserList();
     showScreen('s-admin');
   } else {
-    ssoOnLogin(currentID, _loadUsers()[currentID]?.name || currentID, 'employee');
+    ssoOnLogin(currentID, user.name || currentID, user.role || 'employee');
     ssoToast('Signed in successfully ✓', 'ok');
   }
 }
@@ -2527,7 +2624,7 @@ async function adminReset(empId) {
 }
 
 /* ── Close helpers ── */
-function doClose(){ssoOnLogin(currentID);}
+function doClose(){const u=_loadUsers()[currentID]||{};ssoOnLogin(currentID,u.name||currentID,u.role||'employee');}
 
 
 function strengthScore(v) {
@@ -2559,14 +2656,6 @@ let toastTimer;
 function ssoToast(msg, type) {
   const t = document.getElementById('sso-toast');
   t.textContent = msg;
-  t.className   = 'toast show' + (type === 'err' ? ' err-t' : '');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
-}
-
-function ssoToast(msg, type) {
-  const t = document.getElementById('sso-toast');
-  t.textContent = msg;
   t.className = 'sso-toast show' + (type === 'err' ? ' err-t' : '');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
@@ -2576,13 +2665,23 @@ function ssoToast(msg, type) {
 
 // ── SSO INTEGRATION ──
 const SSO_SESSION_KEY='kn-sso-session';
-function ssoGetSession(){try{return JSON.parse(sessionStorage.getItem(SSO_SESSION_KEY)||'null');}catch{return null;}}
-function ssoSetSession(obj){if(obj)sessionStorage.setItem(SSO_SESSION_KEY,JSON.stringify(obj));else sessionStorage.removeItem(SSO_SESSION_KEY);}
+function ssoValidSession(s){return !!(s&&typeof s==='object'&&typeof s.id==='string'&&s.id&&typeof s.name==='string'&&s.name);}
+function ssoGetSession(){
+  try{const s=JSON.parse(sessionStorage.getItem(SSO_SESSION_KEY)||'null');if(ssoValidSession(s))return s;}catch{}
+  return ssoValidSession(window.__KN_SSO__)?window.__KN_SSO__:null;
+}
+function ssoSetSession(obj){
+  window.__KN_SSO__=obj||null;
+  try{
+    if(obj){sessionStorage.setItem(SSO_SESSION_KEY,JSON.stringify(obj));sessionStorage.setItem('kn-session','1');}
+    else{sessionStorage.removeItem(SSO_SESSION_KEY);sessionStorage.removeItem('kn-session');}
+  }catch{}
+}
 
-function ssoInitials(name){return name.split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase()||'?';}
+function ssoInitials(name){return String(name||'').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase()||'?';}
 
 function ssoOnLogin(id,name,role){
-  name=name||id;role=role||'employee';
+  id=String(id||'');name=String(name||id||'User');role=role||'employee';
   ssoSetSession({id,name,role});
   document.getElementById('sso-gate').style.display='none';
   document.getElementById('user-avatar').textContent=ssoInitials(name);
