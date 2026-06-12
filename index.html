@@ -1984,7 +1984,7 @@ function updateBreadcrumb(){
   const parts=[{id:null,name:'Home'},...folderPath];
   bc.innerHTML=parts.map((p,i)=>{
     if(i===parts.length-1)return`<span class="breadcrumb-item current">${esc(p.name)}</span>`;
-    return`<span class="breadcrumb-item" onclick="navToFolder('${p.id}')">${esc(p.name)}</span><span class="breadcrumb-sep">/</span>`;
+    return`<span class="breadcrumb-item" onclick="navToFolder(${p.id?`'${p.id}'`:'null'})">${esc(p.name)}</span><span class="breadcrumb-sep">/</span>`;
   }).join('');
 }
 function updateBulkActions(){
@@ -2034,7 +2034,8 @@ function openItem(id){
   else previewFile(f);
 }
 function navToFolder(id){
-  if(!id){currentFolder=null;folderPath=[];}
+  // 'null' guards against the root crumb arriving as a stringified null from an inline handler
+  if(!id||id==='null'){currentFolder=null;folderPath=[];}
   else{const idx=folderPath.findIndex(x=>x.id===id);if(idx>=0){folderPath=folderPath.slice(0,idx+1);currentFolder=id;}}
   selectedIds.clear();render();
 }
